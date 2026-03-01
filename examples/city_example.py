@@ -196,7 +196,7 @@ def main() -> None:
     density = make_city_density(size=600)
 
     print("Building graph …")
-    G = build_graph(density, prune_length=5, merge_distance=5, min_edge_weight=10)
+    G = build_graph(density, threshold=0.3, prune_length=5, merge_distance=5)
 
     print(f"  Nodes : {G.number_of_nodes()}")
     print(f"  Edges : {G.number_of_edges()}")

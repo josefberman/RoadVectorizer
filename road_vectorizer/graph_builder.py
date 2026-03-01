@@ -289,7 +289,6 @@ def build_graph(
     dilate_radius: int = 0,
     prune_length: int = 0,
     merge_distance: int = 5,
-    min_edge_weight: float = 0.0,
 ) -> nx.Graph:
     """Convert a 2D density histogram into a weighted undirected graph.
 
@@ -309,10 +308,6 @@ def build_graph(
     merge_distance : int
         Iteratively merge degree-2 nodes connected by edges shorter than
         this many pixels.  Set to 0 to disable.
-    min_edge_weight : float
-        Drop edges whose mean density (``weight``) is below this value.
-        Useful for filtering out faint skeleton artefacts that barely
-        stand out from background noise.  Set to 0 to keep all edges.
 
     Returns
     -------
@@ -379,16 +374,6 @@ def build_graph(
             # Clean up newly isolated nodes
             isolated = [n for n in G.nodes() if G.degree(n) == 0]
             G.remove_nodes_from(isolated)
-
-    # 7. Filter edges by minimum weight (mean density)
-    if min_edge_weight > 0:
-        to_remove = [
-            (u, v) for u, v, d in G.edges(data=True)
-            if d["weight"] < min_edge_weight
-        ]
-        G.remove_edges_from(to_remove)
-        isolated = [n for n in G.nodes() if G.degree(n) == 0]
-        G.remove_nodes_from(isolated)
 
     return G
 

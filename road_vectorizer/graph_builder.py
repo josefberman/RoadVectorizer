@@ -378,3 +378,78 @@ def build_graph(
     return G
 
 
+def compute_road_coverage(
+    full_graph: nx.Graph,
+    partial_graph: nx.Graph,
+    tolerance: int = 2,
+) -> dict:
+    """Compute what fraction of a full road network is present in a partial one.
+
+    For each edge in *full_graph*, the function checks how many of its
+    path pixels lie within *tolerance* pixels of any path pixel in
+    *partial_graph*.  The overall coverage is the length-weighted
+    fraction of matched road.
+
+    Parameters
+    ----------
+    full_graph : nx.Graph
+        The reference graph (built from the full density map).
+        Edges must carry a ``path`` attribute (list of ``(row, col)``).
+    partial_graph : nx.Graph
+        A graph built from a partial density map (some roads removed).
+        Edges must carry a ``path`` attribute.
+    tolerance : int
+        A full-graph pixel is considered "covered" if any partial-graph
+        pixel is within this many pixels (Chebyshev / L∞ distance).
+        Use 0 for exact pixel match, 1–3 for fuzzy matching that
+        tolerates slight skeleton shifts between the two maps.
+
+    Returns
+    -------
+    dict
+        ``"coverage"``  — float in [0, 1], overall fraction of road
+        length present in the partial graph.
+
+        ``"edges"``     — list of dicts, one per edge, each containing:
+        ``"u"``, ``"v"``, ``"length"``, ``"covered_pixels"``,
+        ``"edge_coverage"`` (fraction for that edge).
+    """
+    # Build a set of all path pixels from the partial graph
+    # When tolerance > 0, dilate the set by adding neighbouring pixels
+    partial_pixels: set[tuple[int, int]] = set()
+    for _, _, data in partial_graph.edges(data=True):
+        for r, c in data.get("path", []):
+            for dr in range(-tolerance, tolerance + 1):
+                for dc in range(-tolerance, tolerance + 1):
+                    partial_pixels.add((r + dr, c + dc))
+
+    total_pixels = 0
+    covered_pixels = 0
+    edge_details = []
+
+    for u, v, data in full_graph.edges(data=True):
+        path = data.get("path", [])
+        n_total = len(path)
+        if n_total == 0:
+            continue
+
+        n_covered = sum(1 for p in path if p in partial_pixels)
+
+        total_pixels += n_total
+        covered_pixels += n_covered
+
+        edge_details.append({
+            "u": u,
+            "v": v,
+            "length": n_total,
+            "covered_pixels": n_covered,
+            "edge_coverage": n_covered / n_total if n_total > 0 else 0.0,
+        })
+
+    overall = covered_pixels / total_pixels if total_pixels > 0 else 0.0
+
+    return {
+        "coverage": overall,
+        "edges": edge_details,
+    }
+

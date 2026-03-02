@@ -11,7 +11,7 @@ Quick start::
     plot_graph_overlay(density, G)
 """
 
-from .graph_builder import build_graph
+from .graph_builder import build_graph, compute_road_coverage
 from .visualization import plot_graph_overlay
 
-__all__ = ["build_graph", "plot_graph_overlay"]
+__all__ = ["build_graph", "compute_road_coverage", "plot_graph_overlay"]

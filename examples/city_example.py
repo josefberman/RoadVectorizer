@@ -23,7 +23,7 @@ matplotlib.use("Agg")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from road_vectorizer import build_graph, plot_graph_overlay
+from road_vectorizer import build_graph, compute_road_coverage, plot_graph_overlay
 
 
 def draw_line(density, r0, c0, r1, c1, sigma, intensity=1.0):
@@ -55,6 +55,44 @@ def draw_arc(density, cx, cy, radius, a0, a1, sigma, intensity=1.0):
         density += intensity * np.exp(
             -(((yy - r) ** 2 + (xx - c) ** 2) / (2 * sigma ** 2))
         )
+
+
+def make_partial_density(full_density: np.ndarray, size: int = 600) -> np.ndarray:
+    """Create a partial map with only the arterials (no collectors/minors)."""
+    partial = np.zeros((size, size), dtype=np.float64)
+    sigma_major = 4.0
+    I_major = 1.3
+    S = size
+
+    # Only keep A1, A3, A4 (3 of the 6 arterials), the ring road, and one collector
+    draw_polyline(partial, [
+        (150, 0), (140, 80), (130, 160), (135, 240),
+        (150, 320), (155, 400), (145, 480), (140, S),
+    ], sigma_major, I_major)
+
+    draw_polyline(partial, [
+        (0, 120), (80, 115), (150, 120), (250, 130),
+        (350, 125), (430, 120), (S, 115),
+    ], sigma_major, I_major)
+
+    draw_polyline(partial, [
+        (0, 310), (100, 305), (150, 310), (250, 320),
+        (350, 315), (430, 310), (S, 305),
+    ], sigma_major, I_major)
+
+    # Ring road
+    draw_arc(partial, 300, 280, 200, 0.8, 2.8, 3.5, 1.0)
+
+    # One collector
+    draw_polyline(partial, [
+        (430, 120), (400, 170), (370, 200), (330, 240),
+        (300, 310),
+    ], 3.0, 0.8)
+
+    rng = np.random.default_rng(123)
+    partial += rng.normal(0, 0.025, partial.shape)
+    partial = np.clip(partial, 0, None)
+    return partial
 
 
 def make_city_density(size: int = 600) -> np.ndarray:
@@ -206,6 +244,7 @@ def main() -> None:
     print(f"  Weight range: {min(weights):.2f} – {max(weights):.2f}")
 
     out_path = Path(__file__).resolve().parent / "city_output.png"
+    partial_out_path = Path(__file__).resolve().parent / "city_partial.png"
     print(f"\nSaving overlay to {out_path}")
     plot_graph_overlay(
         density, G,
@@ -216,7 +255,42 @@ def main() -> None:
         edge_width=2.0,
         edge_cmap="plasma",
     )
-    print("Done ✓")
+
+    # ── Coverage demo ────────────────────────────────────────────────
+    print("\n── Coverage demo ──")
+    print("Creating partial map (only 3 arterials + ring road + 1 collector) …")
+    partial = make_partial_density(density, size=600)
+
+    # Build graph from partial map
+    G_partial = build_graph(partial, threshold=0.3, prune_length=5, merge_distance=5)
+    print(f"  Partial graph: {G_partial.number_of_nodes()} nodes, {G_partial.number_of_edges()} edges")
+
+    plot_graph_overlay(
+        partial, G_partial,
+        save_path=partial_out_path,
+        show=False,
+        title="Partial road network — graph overlay",
+        node_size=25,
+        edge_width=2.0,
+        edge_cmap="plasma",
+    )
+
+    # Compare partial graph against full graph
+    result = compute_road_coverage(G, G_partial, tolerance=2)
+    print(f"  Overall coverage: {result['coverage']:.1%}")
+
+    # Show a few per-edge coverages
+    edges_by_cov = sorted(result["edges"], key=lambda e: e["edge_coverage"])
+    print(f"  Least covered edges:")
+    for e in edges_by_cov[:5]:
+        print(f"    {e['u']} — {e['v']}  coverage={e['edge_coverage']:.0%}  "
+              f"({e['covered_pixels']}/{e['length']} px)")
+    print(f"  Most covered edges:")
+    for e in edges_by_cov[-3:]:
+        print(f"    {e['u']} — {e['v']}  coverage={e['edge_coverage']:.0%}  "
+              f"({e['covered_pixels']}/{e['length']} px)")
+
+    print("\nDone ✓")
 
 
 if __name__ == "__main__":
